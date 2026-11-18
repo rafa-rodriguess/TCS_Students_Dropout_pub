@@ -11,6 +11,35 @@ from .paths import PACKAGE_ROOT
 from .protocol import load_protocol
 from .science import DELTA, EPS, FEATURES, KEYS, active_from_recency, response_plan, rewritten_features, sha256_file, survival_at_18
 
+def t4_evaluate(response, forced_recency, original_recency, forced_clicks, action) -> dict:
+    """Predicado T4. Não usa o clique da própria semana de resposta."""
+    forced_moves = bool(response.any() and not np.allclose(forced_recency[response], original_recency[response]))
+    identity = (not bool(response.any())) or bool(np.allclose(forced_clicks[response], action[response]))
+    action_zero = response & np.isfinite(action) & (action == 0.0)
+    zero_ok = (not bool(action_zero.any())) or bool(np.allclose(forced_clicks[action_zero], 0.0))
+    return {
+        "ok": bool(forced_moves and identity and zero_ok),
+        "forced_moves": forced_moves,
+        "identity": identity,
+        "zero_action_stays_zero": zero_ok,
+        "response_any": bool(response.any()),
+    }
+
+
+def t4_clock_predicate(frame: pd.DataFrame) -> dict:
+    """T4 com alpha zero: recência forçada e clique igual ao da semana anterior."""
+    plan = response_plan(frame)
+    forced = rewritten_features(frame, plan, 0.0, 0.0, enabled=True)
+    response = plan["first_response"].to_numpy(dtype=bool) | plan["second_response"].to_numpy(dtype=bool)
+    return t4_evaluate(
+        response,
+        forced["recency_lag"].to_numpy(dtype=float),
+        frame["recency_lag"].to_numpy(dtype=float),
+        forced["total_clicks_lag"].to_numpy(dtype=float),
+        plan["clicks_action"].to_numpy(dtype=float),
+    )
+
+
 PRIVATE_FILES = ("pp_test_scores.csv", "scenario_rows.csv", "r18.csv", "hazard.joblib")
 FROZEN_R18 = {"n_r18_enrollments": 6369, "n_r18_students": 5894}
 SCORE_TOLERANCE = 1e-8
@@ -164,13 +193,8 @@ def _audit(ctx, scope: str) -> tuple[list[dict], list[dict]]:
     same_keys = set(map(tuple, rebuilt[KEYS].to_numpy())) == set(map(tuple, both[KEYS].to_numpy()))
     values_match = _survival_match(rebuilt, both)
     record(results, "T3b", "choque nao reduz S no R18 reconstruido", bool((rebuilt["S_shock"] + 1e-12 >= rebuilt["S_base"]).all()) and same_keys, f"n={len(rebuilt)}")
-    plan = response_plan(merged)
-    forced = rewritten_features(merged, plan, 0.0, 0.0, enabled=True)
-    response = plan["first_response"].to_numpy() | plan["second_response"].to_numpy()
-    forced_moves = bool(response.any() and not np.allclose(forced.loc[response, "recency_lag"], merged.loc[response, "recency_lag"]))
-    zero = merged["total_clicks"].to_numpy(dtype=float) == 0.0
-    zero_ok = not (response & zero).any() or bool(np.allclose(forced.loc[response & zero, "total_clicks_lag"], 0.0))
-    record(results, "T4", "alpha zero ainda forca estado e clique zero permanece", forced_moves and zero_ok, "features privadas")
+    t4 = t4_clock_predicate(merged)
+    record(results, "T4", "alpha zero força recência e copia o clique da semana anterior", t4["ok"], "features privadas")
     record(results, "T5", "acao nao reescreve o proprio hazard", bool(clock["action_unchanged"]), "s*+1")
     record(results, "T6", "mecanismo so na resposta e bate com o arquivo", bool(clock["outside_unchanged"] and mech_gap <= SCORE_TOLERANCE), f"gap={mech_gap}")
     bounded = bool(np.isfinite(predicted).all() and predicted.min() >= 0 and predicted.max() <= 1 and shock_hat.min() >= 0 and shock_hat.max() <= 1 and mech_hat.min() >= 0 and mech_hat.max() <= 1)
