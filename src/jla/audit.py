@@ -600,17 +600,25 @@ def assemble_found(parts: dict) -> dict:
 
 
 def classify_hashes(raw: Path, hashes: dict) -> list[dict]:
-    from .science import sha256_file
+    from .csv_canonical import CONTROL_PENDING, decide
 
     rows = []
     for name, expected in hashes.items():
+        path = raw / str(name)
         if expected in (None, "null"):
+            if name in CONTROL_PENDING and path.exists():
+                decision = decide(path, name, None)
+                if decision["status"] == "FAIL":
+                    rows.append({"file": name, "status": "FAIL", "expected": None, "observed": decision.get("observed")})
+                    continue
             rows.append({"file": name, "status": "PENDING", "expected": None})
             continue
-        path = raw / str(name)
         if not path.exists():
             rows.append({"file": name, "status": "ABSENT", "expected": expected})
             continue
-        observed = sha256_file(path)
-        rows.append({"file": name, "status": "PASS" if observed == expected else "FAIL", "expected": expected, "observed": observed})
+        decision = decide(path, name, expected)
+        row = {"file": name, "status": decision["status"], "expected": expected, "observed": decision.get("observed")}
+        if decision.get("validation_mode"):
+            row["validation_mode"] = decision["validation_mode"]
+        rows.append(row)
     return rows
