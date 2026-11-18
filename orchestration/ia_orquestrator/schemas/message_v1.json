@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ia-orchestrator.local/schemas/message_v1.json",
+  "title": "ia-orchestrator message envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "repository",
+    "task_id",
+    "message_id",
+    "sender_role",
+    "sender_id",
+    "recipient_role",
+    "type",
+    "attempt",
+    "created_at",
+    "payload_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sender_role": {
+      "enum": [
+        "human",
+        "orchestrator",
+        "executor",
+        "agent"
+      ]
+    },
+    "sender_id": {
+      "type": "string"
+    },
+    "recipient_role": {
+      "enum": [
+        "human",
+        "orchestrator",
+        "executor",
+        "agent",
+        "broadcast"
+      ]
+    },
+    "type": {
+      "enum": [
+        "task_open",
+        "request",
+        "non_blocking",
+        "programmed_stop",
+        "ack",
+        "progress",
+        "question",
+        "answer",
+        "result",
+        "control_result",
+        "review",
+        "error",
+        "pause",
+        "resume",
+        "cancel",
+        "complete",
+        "discuss",
+        "analysis",
+        "send_file",
+        "send_file_ready",
+        "get_file"
+      ]
+    },
+    "in_reply_to": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "context_revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  }
+}

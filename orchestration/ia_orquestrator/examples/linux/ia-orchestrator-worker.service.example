@@ -1,0 +1,19 @@
+[Unit]
+Description=IA Orchestrator worker (substitua o role e o project_id)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=EXEMPLO
+Environment=IA_ORCHESTRATOR_HOME=/var/lib/ia-orchestrator
+EnvironmentFile=-/etc/ia-orchestrator/exemplo.env
+ExecStart=/usr/bin/python3 -m ia_orchestrator worker run --project projeto-exemplo --role orchestrator
+Restart=on-failure
+RestartSec=15
+WorkingDirectory=/var/lib/ia-orchestrator
+StandardOutput=append:/var/log/ia-orchestrator/orchestrator.log
+StandardError=append:/var/log/ia-orchestrator/orchestrator.err.log
+
+[Install]
+WantedBy=multi-user.target

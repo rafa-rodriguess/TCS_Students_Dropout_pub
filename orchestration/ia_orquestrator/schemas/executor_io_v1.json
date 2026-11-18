@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ia-orchestrator executor I/O v1",
+  "type": "object",
+  "properties": {
+    "input": {
+      "required": ["project_id", "repository", "task_id", "request_id", "attempt", "prompt", "cwd", "idempotency_key"],
+      "properties": {
+        "project_id": { "type": "string" },
+        "repository": { "type": "string" },
+        "task_id": { "type": "string" },
+        "request_id": { "type": "string" },
+        "attempt": { "type": "integer" },
+        "prompt": { "type": "string" },
+        "context": { "type": "object" },
+        "context_revision": { "type": ["string", "null"] },
+        "cwd": { "type": "string" },
+        "acceptance_criteria": { "type": "array" },
+        "limits": { "type": "object" },
+        "idempotency_key": { "type": "string" }
+      }
+    },
+    "output": {
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["success", "blocked", "failed", "unknown"] },
+        "summary": { "type": "string" },
+        "files_modified": { "type": "array" },
+        "shared_artifacts": { "type": "array" },
+        "tests": { "type": "array" },
+        "errors": { "type": "array" },
+        "questions": { "type": "array" },
+        "checkpoint": { "type": "object" },
+        "recommendation": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

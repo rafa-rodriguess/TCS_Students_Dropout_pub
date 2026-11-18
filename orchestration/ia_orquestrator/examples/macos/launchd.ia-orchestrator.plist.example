@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.ia-orchestrator.orchestrator</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>-m</string>
+    <string>ia_orchestrator</string>
+    <string>worker</string>
+    <string>run</string>
+    <string>--project</string>
+    <string>projeto-exemplo</string>
+    <string>--role</string>
+    <string>orchestrator</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>IA_ORCHESTRATOR_HOME</key>
+    <string>/Users/EXEMPLO/.ia_orchestrator</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/EXEMPLO</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/EXEMPLO/.ia_orchestrator/logs/orchestrator.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/EXEMPLO/.ia_orchestrator/logs/orchestrator.err.log</string>
+</dict>
+</plist>

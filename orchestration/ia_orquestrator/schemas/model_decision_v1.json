@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ia-orchestrator model decision v1",
+  "type": "object",
+  "required": ["schema_version", "decision"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "decision": {
+      "enum": ["dispatch", "revise", "ask_executor", "ask_human", "complete", "pause", "fail"]
+    },
+    "rationale": { "type": "string" },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "observed": { "type": "array", "items": { "type": "string" } },
+        "reported": { "type": "array", "items": { "type": "string" } },
+        "missing": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "next_request": { "type": ["object", "null"] },
+    "question": { "type": ["string", "null"] },
+    "references": { "type": "array" }
+  }
+}

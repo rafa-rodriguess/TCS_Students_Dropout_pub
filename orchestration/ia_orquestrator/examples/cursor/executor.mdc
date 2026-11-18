@@ -1,0 +1,28 @@
+---
+description: Executor ia-orchestrator no chat Cursor aberto. Copie para o projecto consumidor se usar mode: cursor_chat.
+alwaysApply: false
+---
+
+When you see `AGENT_LOOP_TICK_executor`, or when
+`ia-orchestrator pending --project <id> --role executor --json`
+lists a request, execute that job immediately in this chat.
+Do not wait for the user to paste the prompt.
+Do not launch Task/subagent workers. Do not run `worker run --role executor`
+while `executor.mode` is `cursor_chat`.
+
+On wake:
+
+1. Confirm `--project` and the repository with `ia-orchestrator project show`.
+2. Read `ia-orchestrator loop inspect --project <id> --role executor --json`.
+3. If status is JOB, read the single `running/*.md` and execute it normally.
+4. If status is RECOVERY_REQUIRED, keep the primary `running/*.md` active and inspect `control_head` first. Read the full control body from `ia-orchestrator pending --project <id> --role executor --json` using that `request_id`; side-band controls do not create another `running/*.md`:
+   - `non_blocking`: preflight isolation; execute only if it cannot touch or materially degrade the primary run. Otherwise return a blocked `control_result`.
+   - `programmed_stop`: apply the requested immediate/conditional stop and preserve/report the checkpoint.
+   - no `control_head`: continue/recover the primary job.
+   Never create a second `running/*.md` for a side-band control.
+5. Use `ia-orchestrator execution start` / `execution deliver` for the request or control being handled. A control must return `control_result`, not replace the primary `result`.
+   If the claimed type is `send_file`, run `ia-orchestrator send-file --project <id> --role executor --task TASK_ID --request REQUEST_ID` instead of `execution deliver`. That command downloads the public Drive file, checks the hash, writes only `transfered_files/`, and delivers the result. Do not run it while another primary job is active.
+   If the claimed type is `get_file`, run `ia-orchestrator get-file --project <id> --role executor --task TASK_ID --request REQUEST_ID` instead of `execution deliver`. That command reads the blob with git when the file is in the project repository; otherwise it downloads the public URL to a temporary directory. It then uploads the file to the shared Drive folder and delivers the result. Do not run it while another primary job is active.
+6. Leave the poller running. It must keep syncing GitHub every 10s during RECOVERY_REQUIRED. One primary job at a time; side-band controls are the only allowed concurrent commands.
+   If inspect is IDLE but the issue has a `Quarentena (não executável)` comment,
+   do not execute that original envelope; wait for a new valid request.

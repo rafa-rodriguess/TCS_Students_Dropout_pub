@@ -1,0 +1,69 @@
+schema_version: 1
+project_id: projeto-exemplo
+github:
+  host: github.com
+  repository: organizacao/repositorio
+  token_env: GITHUB_TOKEN_PROJETO_EXEMPLO
+  allowed_senders:
+    human: [usuario-responsavel]
+    orchestrator: [bot-orquestrador]
+    executor: [bot-executor]
+artifacts:
+  repository: organizacao/repositorio
+workspace:
+  root: /caminho/local/do/projeto
+context:
+  proposal: docs/proposta.md
+  source_of_truth: source_of_truth.json
+  instructions: AGENTS.md
+  required: []
+orchestrator:
+  mode: simulated   # api | manual | simulated | cursor_chat
+  provider: simulated  # openai_compat | anthropic | simulated
+  model: modelo-configurado
+  api_key_env: LLM_API_KEY
+  base_url: https://api.openai.com/v1
+  token_param: max_tokens
+  worker_id: orchestrator-projeto-exemplo
+  owner: hostname-do-operador
+executor:
+  mode: simulated   # subprocess | manual | simulated | cursor_chat
+  command: []
+  # Exemplo subprocess (preencha com o executável REAL do seu ambiente):
+  # command: ["/usr/bin/python3", "/caminho/para/examples/simulated_executor.py"]
+  # Chat aberto: mode: cursor_chat — o worker Python NÃO executa o job; use loop arm.
+  worker_id: executor-projeto-exemplo
+  owner: hostname-do-operador
+polling:
+  interval_seconds: 30
+  max_backoff_seconds: 300
+loop:
+  interval_seconds: 10
+  # running_dir: null  # omissão = $IA_ORCHESTRATOR_HOME/projects/<id>/data/running
+limits:
+  max_rounds_per_task: 10
+  max_revisions_per_request: 3
+  task_timeout_seconds: 7200
+  model_call_timeout_seconds: 120
+  max_input_tokens: 30000
+  max_output_tokens: 4000
+  budget_usd_per_task: 5.0
+progress:
+  enabled: true
+  interval_minutes: 15   # cadência da tag PULSE; o poller não publica sozinho
+policy:
+  allow_push: true
+  allow_merge: false
+  allow_deploy: false
+pricing:
+  currency: usd
+  models: {}
+  # Preencha só se quiser estimativa monetária. Sem tabela, o custo é desconhecido.
+  # models:
+  #   modelo-configurado:
+  #     input_per_1m: 0.0
+  #     output_per_1m: 0.0
+alerts:
+  enabled: false
+  webhook_url_env: DISCORD_WEBHOOK_URL
+  username: ia-orchestrator
