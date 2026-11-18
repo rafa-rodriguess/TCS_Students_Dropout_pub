@@ -1,0 +1,6 @@
+# Pin do host de desenvolvimento em que o P2 foi ajustado.
+# Não é freeze de um venv limpo e não prova instalação em outra máquina.
+numpy==2.4.4
+pandas==2.3.3
+scikit-learn==1.8.0
+joblib==1.5.3

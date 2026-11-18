@@ -1,0 +1,2 @@
+# Só a suíte offline. Não altera o requirements.lock científico.
+pytest==8.4.2
