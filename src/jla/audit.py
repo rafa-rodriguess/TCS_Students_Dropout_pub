@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -251,6 +252,18 @@ def _decimal_places(key: str) -> int | None:
     return None
 
 
+def _finite_float(value):
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
 def verdict(rows: list[dict]) -> str:
     if not rows or any(row["status"] != "PASS" for row in rows):
         return "FAIL"
@@ -273,8 +286,25 @@ def compare_baseline(found: dict, baseline: dict, tolerance: float = 1e-12) -> l
             rows.append({"metric": key, "status": "BLOCKED", "expected": expected, "observed": observed, "tolerance": None})
             continue
         if isinstance(expected, list):
-            ok = isinstance(observed, list) and len(observed) == len(expected) and all(abs(float(a) - float(b)) <= tolerance for a, b in zip(observed, expected))
-            rows.append({"metric": key, "status": "PASS" if ok else "FAIL", "expected": expected, "observed": observed, "tolerance": tolerance})
+            places = _decimal_places(str(key))
+            same_shape = isinstance(observed, list) and len(observed) == len(expected)
+            if places is not None:
+                ok = same_shape and all(
+                    (left := _finite_float(a)) is not None
+                    and (right := _finite_float(b)) is not None
+                    and round(left, places) == round(right, places)
+                    for a, b in zip(observed, expected, strict=True)
+                )
+                used = f"{places}dp"
+            else:
+                ok = same_shape and all(
+                    (left := _finite_float(a)) is not None
+                    and (right := _finite_float(b)) is not None
+                    and abs(left - right) <= tolerance
+                    for a, b in zip(observed, expected, strict=True)
+                )
+                used = tolerance
+            rows.append({"metric": key, "status": "PASS" if ok else "FAIL", "expected": expected, "observed": observed, "tolerance": used})
             continue
         if isinstance(expected, (int, float)) and not isinstance(expected, bool):
             places = _decimal_places(str(key))
@@ -600,17 +630,25 @@ def assemble_found(parts: dict) -> dict:
 
 
 def classify_hashes(raw: Path, hashes: dict) -> list[dict]:
-    from .science import sha256_file
+    from .csv_canonical import CONTROL_PENDING, decide
 
     rows = []
     for name, expected in hashes.items():
+        path = raw / str(name)
         if expected in (None, "null"):
+            if name in CONTROL_PENDING and path.exists():
+                decision = decide(path, name, None)
+                if decision["status"] == "FAIL":
+                    rows.append({"file": name, "status": "FAIL", "expected": None, "observed": decision.get("observed")})
+                    continue
             rows.append({"file": name, "status": "PENDING", "expected": None})
             continue
-        path = raw / str(name)
         if not path.exists():
             rows.append({"file": name, "status": "ABSENT", "expected": expected})
             continue
-        observed = sha256_file(path)
-        rows.append({"file": name, "status": "PASS" if observed == expected else "FAIL", "expected": expected, "observed": observed})
+        decision = decide(path, name, expected)
+        row = {"file": name, "status": decision["status"], "expected": expected, "observed": decision.get("observed")}
+        if decision.get("validation_mode"):
+            row["validation_mode"] = decision["validation_mode"]
+        rows.append(row)
     return rows
