@@ -8,7 +8,7 @@ Comunicação persistente, assíncrona e rastreável entre uma LLM orquestradora
 - Dados privados: `$IA_ORCHESTRATOR_HOME` (omissão: `~/.ia_orchestrator`)
 - Util integration version: **3.08**
 
-Este diretório é o pacote candidato `orchestration/ia_orquestrator`. Não é o runner científico `orquestrator.py` e não treina modelos. A repo `rafa-rodriguess/TCS_Students_Dropout_pub` já contém o runner no commit `ff99bbcb30f53bac0e3e7d1f2720a682a5620f51`, ramo `reproduction_candidate`. Este pacote ainda não foi copiado para lá.
+Este diretório é a cópia **pública e sanitizada** do software `ia-orchestrator` em `orchestration/ia_orquestrator`, publicada na `main` de `rafa-rodriguess/TCS_Students_Dropout_pub`. Não é o runner científico `orquestrator.py` e não treina modelos. A versão científica originalmente congelada está no commit `ff99bbcb30f53bac0e3e7d1f2720a682a5620f51` (`reproduction_candidate`); sua execução independente foi aceita por equivalência numérica em [A6.6 / Issue #2](https://github.com/rafa-rodriguess/TCS_Students_Dropout_pub/issues/2).
 
 ## O que isto não é
 
