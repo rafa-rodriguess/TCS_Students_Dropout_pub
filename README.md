@@ -1,60 +1,63 @@
-# Runner JLA (candidato preparado)
+# TCS — Reprodução numérica do estudo JLA / OULAD
 
-Este diretório é um candidato preparado para auditoria de exportação. A repo `rafa-rodriguess/TCS_Students_Dropout_pub` existe, está pública, usa `main` e continua vazia. Não contém este pacote e não houve reprodução. Nenhum código foi transferido para lá. O código científico-base auditado é o commit `92d242688b468d610b688192a1707c92dd6669c5` da repo privada de desenvolvimento. As correções desta rodada ainda aguardam conferência.
+Repositório público do pacote científico usado para reproduzir os resultados do estudo de risco temporal de evasão estudantil com dados OULAD. O ponto de entrada é `orquestrator.py` (etapas **00–10**, comentadas e sequenciais). Este runner científico é distinto do software de comunicação entre LLMs em `orchestration/ia_orquestrator/`.
 
-A licença deste código é MIT, no arquivo `LICENSE`. A linha de copyright usa a conta GitHub `rafa-rodriguess`, dona verificável da repo de desenvolvimento. A titularidade entre os autores do manuscrito não está decidida aqui e fica pendente para a orquestradora. A licença CC BY 4.0 não cobre estes scripts.
+## Resultado da reprodução independente (18/11/2026)
 
-## Dados
+**A6.6 concluída e aceita pela orquestradora por equivalência numérica:** a executora independente `pub` baixou o conjunto oficial, treinou o modelo e passou nas etapas científicas 00–09, incluindo T4/T5/T6. A etapa 10 produziu os materiais editoriais (`PASS_EDITORIAL`). A rodada R5 aplicou em memória o comparador corrigido aos agregados científicos preservados da execução R4: **23 das 23 métricas com referência numérica PASS, 0 FAIL**, nas precisões/tolerâncias especificadas; **74 testes automatizados PASS**. Resultado e decisões estão documentados na [Issue #2](https://github.com/rafa-rodriguess/TCS_Students_Dropout_pub/issues/2) e as correções foram integradas pela [PR #4](https://github.com/rafa-rodriguess/TCS_Students_Dropout_pub/pull/4).
 
-Os dados vêm do UCI Machine Learning Repository, dataset 349:
+**Escopo preciso:** o `--compare-baseline` oficial da R4, rodado *antes* da correção do comparador de listas `_Ndp`, apresentou 1 FAIL artificial devido à tolerância errada do intervalo `delta_gap_shock_ci_10dp`. A matriz corrigida de 23/23 foi apurada **sem reexecutar treinamento** e **sem alterar os arquivos históricos da R4**. Não foi executado `PASS_REPRODUCTION` da CLI com o fingerprint atualizado. O aceite é **científico por equivalência numérica**, não uma alegação de aprovação desse status automático.
 
-`https://archive.ics.uci.edu/static/public/349/open+university+learning+analytics+dataset.zip`
+O protocolo mantém `courses.csv`, `vle.csv` e ZIP sem âncoras de hash bruto e `delta_gap_shock_full_float = A CONFIRMAR`. Essas quatro observações **não são divergências numéricas** e não impedem o aceite científico acordado. Os indicadores automáticos `publication_status=BLOCKED` refletem o controle administrativo legado: não significam reprovação da reprodução numérica, nem determinam exigências de submissão do periódico. A adequação do manuscrito é a etapa A7, separada deste pacote.
 
-Catálogo: `https://archive.ics.uci.edu/dataset/349/open+university+learning+analytics+dataset`.
+## Dados e licenças
 
-Licença do conjunto: CC BY 4.0. Atribuição obrigatória: Kuzilek, Hlosta e Zdrahal, Open University Learning Analytics Dataset. Os CSV não entram no git. O download só existe com `--allow-download` e não foi executado nesta preparação.
+Fonte oficial: [Open University Learning Analytics Dataset (UCI #349)](https://archive.ics.uci.edu/dataset/349/open+university+learning+analytics+dataset).
+Download pelo runner: `https://archive.ics.uci.edu/static/public/349/open+university+learning+analytics+dataset.zip`.
+Dataset sob CC BY 4.0: atribuir Kuzilek, Hlosta e Zdrahal / Open University. Código deste repositório licenciado em MIT (veja `LICENSE`). A licença do dataset não é a licença dos scripts. **CSV, ZIP, matrículas, modelos e escores individuais não são versionados**.
 
-Cinco hashes de CSV estão congelados em `config/protocol.yaml`. Os hashes de `courses.csv`, `vle.csv` e do ZIP continuam vazios, com status PENDING. Não inventar esses valores.
+O arquivo `config/protocol.yaml` contém os parâmetros e referências congelados. O gate `SEMANTIC_CANONICAL_V1` permite apenas equivalência documentada de marcação de ausentes (`?` versus vazio) nas colunas elegíveis: isso **não** altera os dados usados cientificamente nem substitui os hashes brutos. Consulte `docs/csv_equivalence_v1.md`.
 
-## Ambiente
+## Instalação e testes
 
-O `requirements.lock` registra o host em que o P2 foi feito: Python 3.14.3, NumPy 2.4.4, pandas 2.3.3, scikit-learn 1.8.0, joblib 1.5.3. Isso não foi validado num venv limpo. Outra pilha é instalação bloqueada, não uma tolerância maior.
+O ambiente que executou a reprodução independente reportou Python 3.14.3, NumPy 2.4.4, pandas 2.3.3, scikit-learn 1.8.0 e joblib 1.5.3; conferir `requirements.lock` e não alterar versões silenciosamente.
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pip install -r requirements-test.txt
-python3 -m pytest tests -q
-python orquestrator.py --help
-python orquestrator.py --plan
+.venv/bin/python -m pytest tests -q
+.venv/bin/python orquestrator.py --help
+.venv/bin/python orquestrator.py --plan
 ```
 
-`requirements-test.txt` traz só o pytest e não muda o lock científico. A instalação do lock num venv limpo ainda não foi provada.
+`--help`, `--plan` e os testes por fixtures não baixam dados nem treinam modelos.
 
-`--help` e `--plan` não escrevem resultados. `pytest` usa só fixtures. Nenhum desses comandos baixa o OULAD nem ajusta o modelo.
+## Execução do estudo
 
-## Saída
-
-Executar exige `--output-dir` apontando para uma pasta fora deste checkout e fora da repo de desenvolvimento. A raiz do código não é destino. Uma pasta que já tenha `data/`, `models/`, `results/`, `figures/`, `logs/` ou `checkpoints/` não é reaproveitada, salvo `--resume` com `checkpoints/state.json` cujo fingerprint coincide com o código e que tenha ao menos uma etapa PASS. O resume não apaga o diretório.
-
-A etapa 03 grava `person_period.csv`. A etapa 04 grava `person_period_split.csv`. A etapa 05 lê o segundo arquivo.
-
-`--compare-baseline` sozinho lê saídas já gravadas e não percorre as etapas 00–09. Também exige `--output-dir` fora do checkout.
-
-`PASS_MOCK` exercita a interface e não é o estudo. `PASS_EDITORIAL` escreve a matriz e não é reprodução. `PASS_REPRODUCTION` exige checkpoints PASS das etapas 00–09, tokens válidos e A4 REAL. Hashes PENDING e o float `A CONFIRMAR` do ΔGap do choque mantêm `publication_status` em BLOCKED.
-
-## Exemplo não executado
-
-O comando abaixo é só um exemplo. Não foi executado e depende de autorização posterior. Não o rode nesta preparação.
+Escolha um diretório **novo e vazio, fora do checkout**, para conter dados, modelos, resultados, figuras, logs e checkpoints:
 
 ```bash
-python orquestrator.py --all --allow-download --output-dir /caminho/fora/do/checkout
+python orquestrator.py --all --allow-download --output-dir /diretorio/externo/tcs_oulad_novo
 ```
 
-## Se algo falhar
+O runner valida o ambiente, baixa o OULAD autorizado, constrói o painel e split por estudante, treina/calibra o modelo, calcula censura, simulações, auditorias, equidade e produtos editoriais. Resumo das etapas: 00 ambiente; 01 download; 02 dados; 03 coorte/features; 04 split; 05 modelo; 06 censura; 07 políticas; 08 operador; 09 equidade; 10 produtos e comparações.
 
-- Sem `--output-dir`, ou com destino dentro do checkout, a execução para antes das etapas.
-- Pasta ocupada sem `--resume` válido: escolher um diretório novo. Não apagar um checkpoint à mão para forçar PASS.
-- Fingerprint diferente: o diretório antigo permanece. Usar outro diretório ou a mesma revisão de código.
-- Hash divergente: o protocolo não é reescrito. A etapa 02 falha.
-- Para desfazer uma saída local, apagar só o diretório passado em `--output-dir`. O código versionado não guarda CSV, `joblib` nem `results/`.
+Para verificar **formalmente** uma execução existente, o comando abaixo só aceita saída com fingerprint de código e checkpoint compatíveis:
+
+```bash
+python orquestrator.py --compare-baseline --output-dir /diretorio/externo/tcs_oulad_novo
+```
+
+A CLI pode retornar `BLOCKED` por marcadores formais ainda sem referência, mesmo com métricas numéricas coincidentes. `PASS_EDITORIAL` não é prova de reprodução; o resultado aceito para A6.6 consta do relatório da executora e da decisão da orquestradora em #2. Para saídas criadas com código anterior, **não falsificar o fingerprint, editar checkpoints ou usar `--resume` incompatível**.
+
+## Estrutura e continuidade
+
+- `src/jla/`: scripts científicos e funções da auditoria.
+- `tests/`: testes offline.
+- `baselines/aggregates.json`: resultados congelados para comparação; não substituí-los pelos observados.
+- `docs/csv_equivalence_v1.md`: equivalência de marcação dos valores ausentes.
+- `orchestration/ia_orquestrator/`: software separado de comunicação/orquestração LLM, UTIL_VERSION 3.08; não executa o modelo.
+- `rearme.md`: estado e instruções para retomada.
+
+Se falhar, preserve o diretório de saída para diagnóstico. Não publique `data/`, `results/private/`, `models/`, ZIP ou qualquer identificador de estudante.
