@@ -14,7 +14,7 @@ Esse runner corta o acompanhamento no último VLE, ou na semana do evento quando
 
 ## Checklist B01–B16
 
-A especificação pública está em `docs/a8_g2c2_b01_b16_public.md`. `contract_checklist()` devolve as 16 cláusulas. Três ficam em LIMITAÇÃO porque a contagem oficial ainda não rodou. Nenhuma está em STOP.
+A especificação pública está em `docs/a8_g2c2_b01_b16_public.md`. `contract_checklist()` devolve as 16 cláusulas. Quatro ficam em LIMITAÇÃO porque a contagem oficial ainda não rodou. Nenhuma está em STOP.
 
 | Código | Status | Prova |
 | --- | --- | --- |
