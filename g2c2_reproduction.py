@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Entrypoint opcional da reprodução G2c.2.
+
+Etapas, nesta ordem, para uma execução futura autorizada:
+00. Conferir Python e pins; não alterar o protocolo A6.
+01. Inventariar os sete CSV oficiais; este comando não baixa.
+02. Aplicar o gate de hash bruto ou a equivalência semântica já publicada, sem regravar CSV.
+03. Construir o relógio A com as funções históricas.
+04. Construir B e B−9 só com máscara explícita de conflito.
+05. Aplicar lag t−1 e a proibição de vazamento.
+06. Registrar a especificação do modelo; não ajustar.
+07. Conferir o catálogo de 99 células e 12 contrastes; não calcular métricas.
+
+Entrada: diretório externo com os sete CSV, nunca o checkout.
+Saída: diretório externo de agregados, nunca o checkout.
+R0 aceita apenas --plan e --preflight.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from jla.g2c2 import bootstrap_catalog, indicator_catalog, model_specification, preflight_decision, refuse_fit  # noqa: E402
+
+
+def _outside(path: Path) -> bool:
+    resolved = path.resolve()
+    return resolved != ROOT and ROOT not in resolved.parents
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="reprodução G2c.2; R0 não ajusta nem baixa")
+    parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--preflight", action="store_true")
+    parser.add_argument("--fit", action="store_true")
+    parser.add_argument("--allow-download", action="store_true")
+    parser.add_argument("--output-dir", type=Path)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.fit or args.allow_download:
+        refuse_fit()
+    if args.output_dir is not None and not _outside(args.output_dir):
+        print("saída dentro do checkout", file=sys.stderr)
+        return 2
+    if args.plan:
+        for line in __doc__.splitlines():
+            if line[:2].isdigit():
+                print(line)
+        return 0
+    if args.preflight:
+        decision = preflight_decision()
+        spec = model_specification()
+        indicators = indicator_catalog(ROOT / "baselines" / "a8_g2c2_dev_targets.csv")
+        contrasts = bootstrap_catalog(ROOT / "baselines" / "a8_g2c2_bootstrap_targets.csv")
+        print(f"decisão {decision['decision']}")
+        print(f"indicadores {indicators['n']} unavailable {indicators['unavailable']} scheduled {indicators['scheduled']}")
+        print(f"contrastes {contrasts['n']} draws {spec['bootstrap_draws']} seed {spec['bootstrap_seed']}")
+        print("g2c2_numeric_pass NO-GO")
+        return 0
+    print("informe --plan ou --preflight", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(2)
