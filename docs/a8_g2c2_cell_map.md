@@ -13,7 +13,7 @@ Noventa e uma células têm função. Oito permanecem UNAVAILABLE e não recebem
 | suporte_comum_linhas | interseção de linhas de teste A×B | linha comum | A, B; B−9 UNAVAILABLE |
 | auc_suporte_comum | AUC nessa interseção | linha comum | A, B; B−9 UNAVAILABLE |
 | brier_suporte_comum | Brier nessa interseção | linha comum | A, B; B−9 UNAVAILABLE |
-| landmark_em_risco | casos + controles do marco | matrícula | A, B, B−9 |
+| landmark_em_risco | em risco na semana 8: casos + controles + excluídos | matrícula | A, B, B−9 |
 | landmark_casos | evento nas semanas 9–18 | matrícula | A, B, B−9 |
 | landmark_controles | observado além de 18 sem evento até 18 | matrícula | A, B, B−9 |
 | landmark_excluidos | censura precoce | matrícula | A, B, B−9 |
@@ -30,6 +30,6 @@ Noventa e uma células têm função. Oito permanecem UNAVAILABLE e não recebem
 | linhas_sem_registro | semana sem VLE e sem submissão | linha | B, B−9; A UNAVAILABLE |
 | clique_zero | registro de VLE com soma zero | linha | B, B−9; A UNAVAILABLE |
 | semana_nominal_parcial | última semana administrativa incompleta | linha | B, B−9; A UNAVAILABLE |
-| gatilho_f / gatilho_m | não separados no resumo congelado | — | A UNAVAILABLE; B e B−9 ainda sem valor nesta R1 se o resumo não os separar |
+| gatilho_f / gatilho_m | R18 com janela de choque, separado por sexo | R18 feminino / masculino | A UNAVAILABLE; B e B−9 calculados |
 
 Os 12 contrastes de bootstrap usam `bootstrap` com 500 draws, seed 42, cluster por `id_student` e hazards já calculados. O ensaio sintético está em `fixed_hazard_contrasts`. A execução real grava só agregados.

@@ -97,9 +97,13 @@ def main(argv: list[str] | None = None) -> int:
             print("execução exige --data-dir e --output-dir externos", file=sys.stderr)
             return 2
         report = structural_report(measure(args.data_dir))
-        if report["status"] != "PASS":
-            print(f"structural STOP mismatches {len(report['mismatches'])}")
+        observed = report["observed"]
+        removed = observed.get("rows_removed")
+        removed_test = observed.get("rows_removed_test")
+        if report["status"] != "PASS" or removed != 348 or removed_test != 77:
+            print(f"structural STOP mismatches {len(report['mismatches'])} removed {removed} removed_test {removed_test}")
             return 1
+        print(f"structural PASS mismatches 0 removed {removed} removed_test {removed_test}")
         run_approved(args.data_dir, args.output_dir)
         print("run-approved finished")
         return 0

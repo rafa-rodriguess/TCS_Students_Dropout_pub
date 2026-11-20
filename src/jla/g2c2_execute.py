@@ -13,17 +13,21 @@ from .g2c2 import clock_frame, mark_partial, with_activity
 from .g2c2_gates import load_enrollments
 from .landmark import evaluate_landmark
 from .science import (
+    BOOTSTRAP_DRAWS,
+    BOOTSTRAP_SEED,
     DELTA,
     EPS,
     FEATURES,
     KEYS,
     STATICS,
     active_from_recency,
+    bootstrap,
     brier,
     clustered_auc,
     ece15,
     expand,
     fit_one,
+    gap,
     student_disjoint_split,
     weekly_clicks,
     weekly_submissions,
@@ -66,15 +70,66 @@ def build_frame(enrollments: pd.DataFrame, clicks: pd.DataFrame, submitted: pd.D
     return frame
 
 
-def _cell(indicator: str, arm: str, value, denominator: str, status: str = "computed") -> dict:
+def _cell(indicator: str, arm: str, value, denominator: str, status: str = "computed", ci: tuple | None = None) -> dict:
+    lo, hi = (None, None) if ci is None else ci
     return {
         "indicator": indicator,
         "arm": arm,
         "denominator": denominator,
         "value": value,
+        "ci_lo": None if lo is None else float(lo),
+        "ci_hi": None if hi is None else float(hi),
         "status": status,
         "reason": "" if status == "computed" else status,
     }
+
+
+def _bootstrap_rows(both: pd.DataFrame, arm: str) -> list[dict]:
+    specs = (
+        ("delta_s_shock", "dS_shock", "S_shock", "s"),
+        ("delta_gap_shock", "dS_shock", "S_shock", "g"),
+        ("delta_s_mechanism", "dS_mech", "S_mech", "s"),
+        ("delta_gap_mechanism", "dS_mech", "S_mech", "g"),
+    )
+    rows = []
+    female = both["female"].to_numpy()
+    for estimand, column, scenario, kind in specs:
+        work = both.copy()
+        work["dS"] = work[column]
+        work["S_scenario"] = work[scenario]
+        boot_s, boot_g = bootstrap(work, "dS")
+        draws = boot_s if kind == "s" else boot_g
+        point = float(work["dS"].mean()) if kind == "s" else gap(work[scenario].to_numpy(), female) - gap(work["S_base"].to_numpy(), female)
+        finite = draws[np.isfinite(draws)]
+        mean = float(finite.mean()) if len(finite) else None
+        bias = None if mean is None else mean - point
+        relative = None if bias is None or point == 0.0 else bias / point
+        lo = float(np.quantile(finite, 0.025)) if len(finite) else None
+        hi = float(np.quantile(finite, 0.975)) if len(finite) else None
+        rows.append(
+            {
+                "arm": arm,
+                "estimand": estimand,
+                "population_n": int(len(both)),
+                "point": point,
+                "bootstrap_mean": mean,
+                "bias_abs": bias,
+                "bias_rel": relative,
+                "ci_lo_published": lo,
+                "ci_hi_published": hi,
+                "ci_lo_replay": lo,
+                "ci_hi_replay": hi,
+                "quantile_abs_gap": 0.0 if lo is not None else None,
+                "n_valid": int(len(finite)),
+                "draws": BOOTSTRAP_DRAWS,
+                "seed": BOOTSTRAP_SEED,
+                "unit": "id_student",
+                "model": "fixed",
+                "source": "pub_fixed_model",
+                "status": "computed" if len(finite) == BOOTSTRAP_DRAWS and lo is not None else "FAIL",
+            }
+        )
+    return rows
 
 
 def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm: str, output: Path) -> dict:
@@ -123,36 +178,51 @@ def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm
         _cell("n_teste", arm, int(keys.shape[0]), "matrícula"),
         _cell("n_linhas_teste", arm, int(len(test)), "linha"),
         _cell("n_eventos_teste", arm, int(y.sum()), "linha de evento"),
-        _cell("auc_semanal", arm, float(weekly["auc"]), "linha de teste"),
+        _cell("auc_semanal", arm, float(weekly["auc"]), "linha de teste", ci=(weekly["ci_lo"], weekly["ci_hi"])),
         _cell("brier", arm, float(brier(y, p)), "linha de teste"),
         _cell("ece15", arm, ece, "linha de teste"),
-        _cell("landmark_em_risco", arm, int(landmark["n_cases"] + landmark["n_controls"]), "matrícula"),
+        _cell("landmark_em_risco", arm, int(landmark["n_cases"] + landmark["n_controls"] + landmark["n_excluded"]), "matrícula"),
         _cell("landmark_casos", arm, int(landmark["n_cases"]), "matrícula"),
         _cell("landmark_controles", arm, int(landmark["n_controls"]), "matrícula"),
         _cell("landmark_excluidos", arm, int(landmark["n_excluded"]), "matrícula"),
-        _cell("auc_landmark", arm, landmark["auc_unweighted"], "caso e controle", landmark_status if landmark["auc_unweighted"] is None else "computed"),
-        _cell("auc_ipcw", arm, None if landmark_status == "NO-GO" else landmark["auc"], "caso e controle", landmark_status),
+        _cell("auc_landmark", arm, landmark["auc_unweighted"], "caso e controle", landmark_status if landmark["auc_unweighted"] is None else "computed", ci=None if landmark["auc_unweighted_ci"] is None else tuple(landmark["auc_unweighted_ci"])),
+        _cell("auc_ipcw", arm, None if landmark_status == "NO-GO" else landmark["auc"], "caso e controle", landmark_status, ci=None if landmark_status == "NO-GO" or landmark["auc_ci"] is None else tuple(landmark["auc_ci"])),
         _cell("G18", arm, None if landmark_status == "NO-GO" else g18, "treino em risco na semana 8", landmark_status),
         _cell("ess_casos", arm, landmark["ess_cases"], "caso"),
         _cell("ess_controles", arm, landmark["ess_controls"], "controle"),
         _cell("r18", arm, int(len(r18_keys)), "matrícula de teste no painel"),
         _cell("gatilho_r18", arm, int(len(trigger_ids & r18_ids)), "R18 do próprio braço"),
         _cell("resposta_r18", arm, int(len(response_ids & r18_ids)), "R18 do próprio braço"),
-        _cell("delta_s_choque", arm, contrasts["delta_s_shock"], "R18 do próprio braço"),
-        _cell("delta_s_mecanismo", arm, contrasts["delta_s_mechanism"], "R18 do próprio braço"),
+        _cell("delta_s_choque", arm, contrasts["delta_s_shock"], "R18 do próprio braço", ci=None if contrasts["delta_s_shock_ci"] is None else tuple(contrasts["delta_s_shock_ci"])),
+        _cell("delta_s_mecanismo", arm, contrasts["delta_s_mechanism"], "R18 do próprio braço", ci=None if contrasts["delta_s_mechanism_ci"] is None else tuple(contrasts["delta_s_mechanism_ci"])),
         _cell("gap_basal", arm, float(both.loc[both["female"], "S_base"].mean() - both.loc[~both["female"], "S_base"].mean()), "R18 do próprio braço"),
         _cell("gap_choque", arm, float(both.loc[both["female"], "S_shock"].mean() - both.loc[~both["female"], "S_shock"].mean()), "R18 do próprio braço"),
-        _cell("delta_gap_choque", arm, contrasts["delta_gap_shock"], "R18 do próprio braço"),
+        _cell("delta_gap_choque", arm, contrasts["delta_gap_shock"], "R18 do próprio braço", ci=None if contrasts["delta_gap_shock_ci"] is None else tuple(contrasts["delta_gap_shock_ci"])),
         _cell("gap_mecanismo", arm, float(both.loc[both["female"], "S_mech"].mean() - both.loc[~both["female"], "S_mech"].mean()), "R18 do próprio braço"),
-        _cell("delta_gap_mecanismo", arm, contrasts["delta_gap_mechanism"], "R18 do próprio braço"),
+        _cell("delta_gap_mecanismo", arm, contrasts["delta_gap_mechanism"], "R18 do próprio braço", ci=None if contrasts["delta_gap_mechanism_ci"] is None else tuple(contrasts["delta_gap_mechanism_ci"])),
     ]
+    if (arm, "gatilho_f") not in UNAVAILABLE:
+        r18_gender = test.loc[test["week"] == 18, KEYS + ["gender"]].drop_duplicates()
+        triggered = test.loc[active, KEYS].drop_duplicates()
+        gendered = r18_gender.merge(triggered, on=KEYS, how="inner")
+        sex = gendered["gender"].astype(str)
+        cells.append(_cell("gatilho_f", arm, int(sex.eq("F").sum()), "R18 feminino"))
+        cells.append(_cell("gatilho_m", arm, int(sex.eq("M").sum()), "R18 masculino"))
     if (arm, "linhas_sem_registro") not in UNAVAILABLE:
         cells.append(_cell("linhas_sem_registro", arm, int(((test["absent_record"] == 1)).sum()), "linha"))
     if (arm, "clique_zero") not in UNAVAILABLE:
         cells.append(_cell("clique_zero", arm, int(((test["click_record"] == 1) & (test["total_clicks"] == 0)).sum()), "linha"))
     if (arm, "semana_nominal_parcial") not in UNAVAILABLE:
         cells.append(_cell("semana_nominal_parcial", arm, int((test["partial_nominal_week"] == 1).sum()), "linha"))
-    payload = {"arm": arm, "cells": cells, "contrasts": contrasts, "landmark_status": landmark_status, "G18": g18}
+    payload = {
+        "arm": arm,
+        "cells": cells,
+        "contrasts": contrasts,
+        "bootstrap": _bootstrap_rows(both, arm),
+        "landmark_status": landmark_status,
+        "frozen_ok": bool(landmark["frozen_ok"]),
+        "G18": g18,
+    }
     (output / "results").mkdir(parents=True, exist_ok=True)
     (output / "results" / f"{arm}.json").write_text(json.dumps(payload), encoding="utf-8")
     return {"test_keys": test[KEYS + ["week", "event", "hazard_hat"]], "payload": payload}
@@ -163,10 +233,17 @@ def run_approved(raw: Path, output: Path) -> dict:
     enrollments, test_ids, clicks, submitted = _prepare(raw)
     saved = {}
     for arm in ("A", "B", "B-9"):
+        print(f"arm {arm} start", flush=True)
         frame = build_frame(enrollments, clicks, submitted, test_ids, arm)
         saved[arm] = score_arm(frame, enrollments, test_ids, arm, output)
         del frame
+        print(f"arm {arm} done", flush=True)
     _common_support(saved["A"]["test_keys"], saved["B"]["test_keys"], output)
+    rows = []
+    for arm in saved:
+        payload = json.loads((output / "results" / f"{arm}.json").read_text(encoding="utf-8"))
+        rows.extend(payload["bootstrap"])
+    (output / "results" / "bootstrap.json").write_text(json.dumps(rows), encoding="utf-8")
     return {"arms": list(saved), "output": str(output)}
 
 
@@ -174,17 +251,18 @@ def _common_support(left: pd.DataFrame, right: pd.DataFrame, output: Path) -> No
     keys = KEYS + ["week"]
     merged = left.merge(right, on=keys, suffixes=("_a", "_b"))
     rows = int(len(merged))
-    def _auc_brier(frame: pd.DataFrame, event: str, score: str) -> tuple[float | None, float | None]:
+    def _auc_brier(frame: pd.DataFrame, event: str, score: str) -> tuple[float | None, float | None, tuple | None]:
         if frame.empty or frame[event].nunique() < 2:
-            return None, None
+            return None, None, None
         scored = frame[["id_student", event, score]].rename(columns={event: "event", score: "hazard_hat"})
-        return float(clustered_auc(scored)["auc"]), float(brier(scored["event"].to_numpy(dtype=int), scored["hazard_hat"].to_numpy(dtype=float)))
+        auc = clustered_auc(scored)
+        return float(auc["auc"]), float(brier(scored["event"].to_numpy(dtype=int), scored["hazard_hat"].to_numpy(dtype=float))), (auc["ci_lo"], auc["ci_hi"])
 
-    auc_a, brier_a = _auc_brier(merged, "event_a", "hazard_hat_a")
-    auc_b, brier_b = _auc_brier(merged, "event_b", "hazard_hat_b")
+    auc_a, brier_a, ci_a = _auc_brier(merged, "event_a", "hazard_hat_a")
+    auc_b, brier_b, ci_b = _auc_brier(merged, "event_b", "hazard_hat_b")
     extra = {
-        "A": [_cell("suporte_comum_linhas", "A", rows, "linha comum"), _cell("auc_suporte_comum", "A", auc_a, "linha comum"), _cell("brier_suporte_comum", "A", brier_a, "linha comum")],
-        "B": [_cell("suporte_comum_linhas", "B", rows, "linha comum"), _cell("auc_suporte_comum", "B", auc_b, "linha comum"), _cell("brier_suporte_comum", "B", brier_b, "linha comum")],
+        "A": [_cell("suporte_comum_linhas", "A", rows, "linha comum"), _cell("auc_suporte_comum", "A", auc_a, "linha comum", ci=ci_a), _cell("brier_suporte_comum", "A", brier_a, "linha comum")],
+        "B": [_cell("suporte_comum_linhas", "B", rows, "linha comum"), _cell("auc_suporte_comum", "B", auc_b, "linha comum", ci=ci_b), _cell("brier_suporte_comum", "B", brier_b, "linha comum")],
     }
     for arm, cells in extra.items():
         path = output / "results" / f"{arm}.json"

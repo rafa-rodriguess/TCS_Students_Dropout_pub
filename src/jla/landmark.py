@@ -112,6 +112,7 @@ def evaluate_landmark(enr: pd.DataFrame, frame: pd.DataFrame, model, train_ids: 
         "auc": None if ipcw is None else ipcw["auc"],
         "auc_ci": None if ipcw is None else [ipcw["ci_lo"], ipcw["ci_hi"]],
         "auc_unweighted": None if unweighted is None else unweighted["auc"],
+        "auc_unweighted_ci": None if unweighted is None else [unweighted["ci_lo"], unweighted["ci_hi"]],
         "ess_cases": ess_cases,
         "ess_controls": ess_controls,
         "support": support,
