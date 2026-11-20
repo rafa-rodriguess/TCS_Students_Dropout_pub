@@ -1,8 +1,8 @@
-# G2c.2 R0 — preflight sem ajuste
+# G2c.2 R2 — preflight corretivo sem ajuste real
 
-Decisão: **STOP** para execução científica. O código isolado deste branch pode ser inspecionado. Ele não autoriza PASS G2c.2, não reutiliza o PASS numérico da A6 e não dispara R1.
+Decisão do preflight: **GO**. Decisão da execução real: **STOP** até a orquestradora emitir R1. Este código não autoriza PASS G2c.2 e não reutiliza o PASS numérico da A6.
 
-- `r0_isolated_code`: GO
+- `r2_preflight`: GO
 - `r1_execution`: NO-GO
 - `g2c2_numeric_pass`: NO-GO
 
@@ -12,25 +12,30 @@ O runner histórico `orquestrator.py` etapas 00–10 permanece o caminho A. Ele 
 
 Esse runner corta o acompanhamento no último VLE, ou na semana do evento quando o desfecho é Withdrawn com data não negativa. Não abre a semana nominal `floor(module_presentation_length/7)`, não marca semana sem registro, não separa B de B−9 e não produz as 99 células nem os 12 contrastes do contrato novo. Um PASS da A6 não é PASS G2c.2.
 
-## Checklist das cláusulas públicas
+## Checklist B01–B16
 
-A lista numerada B01–B16 vive no repositório privado citado pelo contrato e não foi importada. O checklist abaixo é só o contrato público deste branch.
+A especificação pública está em `docs/a8_g2c2_b01_b16_public.md`. `contract_checklist()` devolve as 16 cláusulas. Três ficam em LIMITAÇÃO porque a contagem oficial ainda não rodou. Nenhuma está em STOP.
 
-| Cláusula pública | Estado no R0 | Falta |
+| Código | Status | Prova |
 | --- | --- | --- |
-| Sete CSV oficiais e chave de matrícula | Inventário do extrato já obtido, sem download novo | R1 precisa repetir o gate no diretório da própria execução |
-| Relógio A até o último VLE, semana zero inclusive | Regras reaproveitadas e cobertas por teste sintético | Contagens 22.855/9.738 e 232.509 só depois do painel real |
-| B estende Pass/Fail/Distinction sem evento até a semana nominal, inclusive parcial | Implementado em `src/jla/g2c2.py` | Confirmar contagens 278.056 e R18 7.337 só na R1 |
-| Semanas sem registro ficam com clique zero e flag de ausência | Teste sintético | Não inventar atividade no arquivo real |
-| VLE e submissão observados não são apagados | Se a última observação passa da semana nominal, o fim acompanha a observação | — |
-| Withdrawn sem evento V6 permanece até o último VLE | Teste com data negativa | Não imputar data |
-| Nove Fail com data conflitante | B aceita máscara explícita; B−9 recusa máscara ausente | Predicado de identificação não está no contrato público |
-| Proibição de vazamento e lag `t−1` | Whitelist P2; `date_registration` também fica fora de X | — |
-| GroupKFold por estudante, não `cv=5` | Especificação e teste de splits disjuntos, sem `fit` | — |
-| Landmark L8–T18, IPCW, ESS, G só no treino | Regras descritas no plano; funções A6 existentes não foram religadas a B | Positividade e identificação só podem ser julgadas com dados |
-| R18 ex-post, não causal e não política | Documentado; sem cálculo | Populações 6.369 / 7.337 / 7.335 só na R1 |
-| 99 células e 12 contrastes | Catálogo conferido: 91 agendadas, 8 UNAVAILABLE, 12 contrastes de 500 draws | Nenhum valor foi calculado |
-| Tolerância numérica `1e-9` se algoritmo e versões coincidirem | Regra de comparação escrita; sem resultado | Divergência futura é STOP, não ajuste de meta |
+| B01 | PASS | A e B têm relógios separados e a especificação não lê escores externos |
+| B02 | PASS | Evento só para Withdrawn com data não negativa |
+| B03 | LIMITAÇÃO | O split sintético não mistura estudante; 32.593 / 22.855 / 9.738 ficam para R1 |
+| B04 | PASS | `t_final_week` administrativo é `floor(length/7)` mesmo com atividade posterior |
+| B05 | LIMITAÇÃO | `fail9_mask` está implementado; as contagens 9, 348 e 77 não foram medidas |
+| B06 | PASS | Withdrawn sem evento V6 termina no último VLE |
+| B07 | PASS | A grade inclui a semana zero e não corrige entrada tardia |
+| B08 | PASS | A semana nominal parcial é marcada e não vira inferência por dia |
+| B09 | PASS | X não contém desfecho, datas nem estado da própria semana |
+| B10 | PASS | A família logística e os splits por estudante estão fixos |
+| B11 | PASS | O ensaio sintético calcula AUC, Brier, ECE15 e suporte comum |
+| B12 | PASS | Landmark, G, IPCW e ESS rodam no ensaio; `G(18)<0.05` devolve NO-GO |
+| B13 | LIMITAÇÃO | Choque, mecanismo e R18 rodam no ensaio; 6.369 / 7.337 / 7.335 não foram estimados |
+| B14 | PASS | A média em coorte fixa é não crescente; o bootstrap tem 500 draws e escore fixo |
+| B15 | LIMITAÇÃO | Os catálogos contam 99 e 12; nenhum valor oficial foi produzido |
+| B16 | PASS | Alvo e modelo não mudam depois do escore; divergência futura é STOP |
+
+Atividade VLE ou submissão depois da semana nominal permanece no registro bruto e entra só na métrica diagnóstica `post_nominal_diagnosis`. Ela não abre linha de risco.
 
 ## Oito UNAVAILABLE já fechadas
 
@@ -41,24 +46,24 @@ Não são lacunas de implementação. O resumo congelado as deixa vazias:
 
 ## Inventário do extrato oficial já isolado
 
-Não houve download neste R0 e nenhuma métrica foi estimada. O extrato previamente obtido da UCI tem os sete CSV e o ZIP. `courses.csv` traz `module_presentation_length` e 22 apresentações, com comprimentos inteiros.
+Não houve download nesta R2 e nenhuma métrica OULAD foi estimada. O extrato previamente obtido da UCI tem os sete CSV e o ZIP. `courses.csv` traz `module_presentation_length` e 22 apresentações, com comprimentos inteiros. O hash abaixo é o sha256 observado do arquivo. Onde ele difere do protocolo, o gate continua sendo a equivalência semântica já publicada; o hash bruto histórico não foi substituído. courses.csv, vle.csv e o ZIP não têm hash no protocolo e permanecem PENDING. Esse PENDING não impede a reprodução científica.
 
-| Arquivo | Gate neste extrato |
-| --- | --- |
-| studentInfo.csv | PASS por equivalência semântica; o hash bruto do protocolo não foi reescrito |
-| studentRegistration.csv | PASS por equivalência semântica |
-| studentVle.csv | PASS pelo hash bruto |
-| studentAssessment.csv | PASS por equivalência semântica |
-| assessments.csv | PASS por equivalência semântica |
-| courses.csv | PENDING |
-| vle.csv | PENDING |
-| ZIP | PENDING, sha256 `f2ed1902616c1fe8d2824d872c0b7d2d72be435bf0124d077044fe4be2c6d3e4`, 46748244 bytes |
+| Arquivo | sha256 observado | Gate |
+| --- | --- | --- |
+| studentInfo.csv | `815fbc3e2de29f79900bc63f0345a35db62c9146afaa1d86e7107b8b3beffc60` | PASS semântico; bruto diferente do protocolo |
+| studentRegistration.csv | `bbc87a0de1fe2a9ec6decce1ca6c1a02cf17b54ad3bdcc673fc6413b41c61d47` | PASS semântico; bruto diferente do protocolo |
+| studentVle.csv | `52668253d876c5becbcb72185977152700cecab2942aca807fecc3dd54b937f0` | PASS_RAW |
+| studentAssessment.csv | `b1839e17618a5de36b6d189a242d3123f7939a56c8c9ccef0c17b9199c614a6b` | PASS semântico; bruto diferente do protocolo |
+| assessments.csv | `9ce92381e4a0ac457f8e251b2eb2c179ed51e023ab30d1d671a0268bd62316ba` | PASS semântico; bruto diferente do protocolo |
+| courses.csv | `4f16eee7454b15e109b0a21a0e43be820e6846ed6f9301bb7feb5ab5ad737a75` | PENDING |
+| vle.csv | `d7a146497edd0e47ef536144b58796c07b554002d3753e848b8e4cd8a56f4c38` | PENDING |
+| ZIP | `f2ed1902616c1fe8d2824d872c0b7d2d72be435bf0124d077044fe4be2c6d3e4` | PENDING, 46748244 bytes |
 
 A equivalência troca `?` por vazio só na memória, nas colunas já publicadas, e não falsifica o hash bruto.
 
 ## Testes e ambiente
 
-`python -m pytest tests -q`: 81 passed. Os testes novos são sintéticos: composição de matrícula, semana de evento, data negativa, semana silenciosa, linha nominal parcial, lag da semana anterior, vazamento, splits por estudante, recusa de B−9 sem máscara e recusa de `--fit`.
+`python -m pytest tests -q`: 83 passed. Os testes novos são sintéticos: composição de matrícula, corte nominal estrito, atividade posterior só no diagnóstico, Fail9 com data negativa, zero, positiva e nula, exclusão por matrícula, semana silenciosa, lag, vazamento, splits, métricas em memória e recusa de `--fit`. Nenhum treino usa OULAD.
 
 Ambiente do teste: Python 3.14.3, numpy 2.4.4, pandas 2.3.3, scikit-learn 1.8.0, joblib 1.5.3. Nenhum modelo foi ajustado.
 
@@ -66,9 +71,10 @@ Ambiente do teste: Python 3.14.3, numpy 2.4.4, pandas 2.3.3, scikit-learn 1.8.0,
 
 Uma leitura do `studentVle.csv` já extraído, com cerca de 454 MB, mais a montagem da grade B, um ajuste logístico calibrado e 500 reamostragens por estudante com estimador fixo. Não há segundo ajuste dentro do bootstrap. O diretório de saída tem de ficar fora do checkout.
 
-## Obstáculos que mantêm o STOP
+## O que ainda não autoriza R1
 
-1. O contrato público não define como reconhecer os nove Fail com data de saída conflitante. B−9 não tenta adivinhar.
-2. B01–B16 não estão neste repositório.
-3. courses.csv, vle.csv e o ZIP continuam PENDING.
-4. Suporte comum, AUC e Brier de B−9 contra A permanecem UNAVAILABLE por definição do alvo.
+1. A execução real continua fechada até uma request R1.
+2. As contagens oficiais dos nove Fail e das grades ainda não foram medidas. O predicado já está fixo: Fail com `date_unregistration` numérica não nula, inclusive negativa e zero. B−9 exclui a matrícula, não o estudante inteiro.
+3. O catálogo conta 99 indicadores e 12 contrastes. O ensaio sintético calcula as famílias de métrica, mas nenhum valor oficial foi produzido.
+4. courses.csv, vle.csv e o ZIP continuam PENDING. Isso não bloqueia a ciência.
+5. Suporte comum, AUC e Brier de B−9 contra A permanecem UNAVAILABLE por definição do alvo.

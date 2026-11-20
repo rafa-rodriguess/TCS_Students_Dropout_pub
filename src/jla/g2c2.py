@@ -1,8 +1,8 @@
 """Relógio A/B/B−9 para a reprodução G2c.2.
 
-Este módulo não treina, não baixa OULAD e não lê alvos numéricos para
-produzir escores. A máscara dos nove Fail com data de saída conflitante
-precisa ser explícita: o contrato público não define o predicado.
+Este módulo não treina OULAD, não baixa dados e não lê alvos numéricos
+para produzir escores. O corte nominal é estrito. A máscara Fail9 é
+`final_result == fail` com data numérica preenchida, de qualquer sinal.
 """
 
 from __future__ import annotations
@@ -133,7 +133,16 @@ def _date(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
-def clock_frame(enrollments: pd.DataFrame, arm: str, conflict: pd.Series | None = None) -> pd.DataFrame:
+def fail9_mask(enrollments: pd.DataFrame) -> pd.Series:
+    """Fail com data numérica preenchida, qualquer sinal. Não lista identificadores."""
+    if "final_result" not in enrollments.columns or "date_unregistration" not in enrollments.columns:
+        raise MethodStop("máscara Fail9 sem final_result ou date_unregistration")
+    result = _result(enrollments["final_result"])
+    date = _date(enrollments["date_unregistration"])
+    return result.eq("fail") & date.notna()
+
+
+def clock_frame(enrollments: pd.DataFrame, arm: str) -> pd.DataFrame:
     """Monta o fim do acompanhamento. Não lê arquivos e não estima métricas."""
     if arm not in ARMS:
         raise MethodStop(f"braço desconhecido: {arm}")
@@ -142,24 +151,12 @@ def clock_frame(enrollments: pd.DataFrame, arm: str, conflict: pd.Series | None 
     if missing:
         raise MethodStop("matrícula sem " + ", ".join(missing))
     work = enrollments.copy().reset_index(drop=True)
+    mask = fail9_mask(work)
     if arm == "B-9":
-        if conflict is None:
-            raise MethodStop(
-                "B-9 exige máscara explícita dos Fail com data de saída conflitante; "
-                "o predicado não está no contrato público"
-            )
-        mask = conflict.astype(bool).to_numpy()
-        if len(mask) != len(work):
-            raise MethodStop("máscara de conflito com comprimento diferente da coorte")
-        work = work.loc[~mask].reset_index(drop=True)
+        work = work.loc[~mask.to_numpy()].reset_index(drop=True)
         conflict_flag = np.zeros(len(work), dtype=int)
     else:
-        conflict_flag = np.zeros(len(work), dtype=int)
-        if arm == "B" and conflict is not None:
-            mask = conflict.astype(bool).to_numpy()
-            if len(mask) != len(enrollments):
-                raise MethodStop("máscara de conflito com comprimento diferente da coorte")
-            conflict_flag = mask.astype(int)
+        conflict_flag = mask.astype(int).to_numpy()
     result = _result(work["final_result"])
     date = _date(work["date_unregistration"])
     last = pd.to_numeric(work["t_last_obs_week"], errors="coerce").fillna(0).astype(int).clip(lower=0)
@@ -188,10 +185,6 @@ def clock_frame(enrollments: pd.DataFrame, arm: str, conflict: pd.Series | None 
             raise MethodStop("apresentação sem comprimento; sem imputação")
         ends[i] = nominal_week(float(length.iloc[i]))
         reason[i] = "nominal"
-        observed = int(last.iloc[i])
-        if observed > ends[i]:
-            ends[i] = observed
-            reason[i] = "nominal_plus_observed"
     out = work[KEYS].copy()
     out["event_withdrawn"] = event.astype(int).to_numpy()
     out["t_event_week"] = t_event.to_numpy()
@@ -210,7 +203,7 @@ def mark_partial(frame: pd.DataFrame, clock: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
     partial = np.zeros(len(out), dtype=int)
     length = pd.to_numeric(out["module_presentation_length"], errors="coerce")
-    nominal_row = out["clock_reason"].isin(["nominal", "nominal_plus_observed"]) & out["arm"].isin(["B", "B-9"])
+    nominal_row = out["clock_reason"].eq("nominal") & out["arm"].isin(["B", "B-9"])
     for i in np.flatnonzero(nominal_row.to_numpy()):
         if pd.isna(length.iloc[i]):
             continue
@@ -247,8 +240,37 @@ def assert_previous_week_lag(frame: pd.DataFrame) -> None:
         raise RuntimeError("semana zero com lag")
 
 
-def panel(enrollments: pd.DataFrame, clicks: pd.DataFrame, submitted: pd.DataFrame, arm: str, conflict: pd.Series | None = None) -> pd.DataFrame:
-    clock = clock_frame(enrollments, arm, conflict)
+def post_nominal_diagnosis(enrollments: pd.DataFrame, clicks: pd.DataFrame, submitted: pd.DataFrame) -> dict:
+    """Conta atividade bruta depois da semana nominal. Não cria linha de risco e não apaga o registro."""
+    work = enrollments.reset_index(drop=True)
+    result = _result(work["final_result"])
+    admin = result.isin(NOMINAL_RESULTS)
+    length = pd.to_numeric(work["module_presentation_length"], errors="coerce")
+    if admin.any() and length.loc[admin].isna().any():
+        raise MethodStop("apresentação sem comprimento; sem imputação")
+    nominal = pd.Series(np.nan, index=work.index, dtype=float)
+    nominal.loc[admin] = [nominal_week(float(value)) for value in length.loc[admin]]
+    bounds = work.loc[admin, KEYS].copy()
+    bounds["nominal_week"] = nominal.loc[admin].to_numpy()
+
+    def _late(activity: pd.DataFrame) -> pd.DataFrame:
+        if activity.empty:
+            return activity
+        merged = activity.merge(bounds, on=KEYS, how="inner")
+        return merged.loc[merged["week"].astype(int) > merged["nominal_week"].astype(int)]
+
+    late_clicks = _late(clicks)
+    late_submitted = _late(submitted)
+    keys = pd.concat([late_clicks[KEYS], late_submitted[KEYS]], ignore_index=True).drop_duplicates() if len(late_clicks) or len(late_submitted) else work[KEYS].iloc[0:0]
+    return {
+        "late_click_rows": int(len(late_clicks)),
+        "late_submission_rows": int(len(late_submitted)),
+        "late_enrollments": int(len(keys)),
+    }
+
+
+def panel(enrollments: pd.DataFrame, clicks: pd.DataFrame, submitted: pd.DataFrame, arm: str) -> pd.DataFrame:
+    clock = clock_frame(enrollments, arm)
     expanded = expand(clock)
     expanded = mark_partial(expanded, clock)
     out = with_activity(expanded, clicks, submitted)
@@ -287,16 +309,38 @@ def bootstrap_catalog(path: Path) -> dict:
     return {"n": 12, "rows": public}
 
 
+def contract_checklist() -> list[dict]:
+    return [
+        {"code": "B01", "status": "PASS", "proof": "clock_frame separa A e B; model_specification não lê escores"},
+        {"code": "B02", "status": "PASS", "proof": "clock_frame marca Withdrawn com data não negativa"},
+        {"code": "B03", "status": "LIMITAÇÃO", "proof": "student_group_splits impede aluno nos dois lados; contagens 32593/22855/9738 ficam para R1"},
+        {"code": "B04", "status": "PASS", "proof": "clock_frame corta em floor(length/7); post_nominal_diagnosis não abre linha de risco"},
+        {"code": "B05", "status": "LIMITAÇÃO", "proof": "fail9_mask usa data numérica não nula; as contagens 9/348/77 são conferência de R1, sem lista de IDs"},
+        {"code": "B06", "status": "PASS", "proof": "Withdrawn com data negativa termina no último VLE"},
+        {"code": "B07", "status": "PASS", "proof": "a grade começa na semana zero e não desloca inscrição tardia"},
+        {"code": "B08", "status": "PASS", "proof": "mark_partial marca a semana nominal incompleta"},
+        {"code": "B09", "status": "PASS", "proof": "assert_previous_week_lag e LEAKAGE excluem a semana corrente"},
+        {"code": "B10", "status": "PASS", "proof": "model_specification e student_group_splits; fit_one só no ensaio sintético"},
+        {"code": "B11", "status": "PASS", "proof": "synthetic_end_to_end calcula AUC, Brier, ECE15 e suporte comum"},
+        {"code": "B12", "status": "PASS", "proof": "landmark_roles, censoring_g, ipcw_weights e ess; G(18)<0.05 devolve NO-GO"},
+        {"code": "B13", "status": "LIMITAÇÃO", "proof": "o ensaio calcula R18, choque e mecanismo; 6369/7337/7335 não foram estimados"},
+        {"code": "B14", "status": "PASS", "proof": "survival_at_18 é não crescente e clustered_auc usa 500 draws com escore fixo"},
+        {"code": "B15", "status": "LIMITAÇÃO", "proof": "indicator_catalog conta 99 e bootstrap_catalog conta 12; nenhum valor oficial foi produzido"},
+        {"code": "B16", "status": "PASS", "proof": "os alvos não entram no estimador; divergência futura é STOP, sem tuning"},
+    ]
+
+
 def preflight_decision() -> dict:
     return {
-        "r0_isolated_code": "GO",
+        "r2_preflight": "GO",
         "r1_execution": "NO-GO",
         "g2c2_numeric_pass": "NO-GO",
-        "decision": "STOP",
+        "decision": "GO",
+        "execution": "STOP",
         "obstacles": [
-            "O predicado que identifica os nove Fail com data de saída conflitante não está no contrato público.",
-            "A enumeração privada B01–B16 não está neste repositório e não foi importada.",
-            "O runner A6 não constrói a grade nominal B nem B−9; o resultado A6 não autoriza PASS G2c.2.",
-            "courses.csv, vle.csv e o ZIP seguem PENDING no protocolo; a equivalência semântica não substitui o hash bruto.",
+            "A execução real continua fechada até a orquestradora emitir R1.",
+            "As contagens oficiais dos nove Fail e das grades A/B/B−9 ainda não foram medidas neste repositório.",
+            "O runner A6 não produz o contrato B; o PASS numérico da A6 não é PASS G2c.2.",
+            "courses.csv, vle.csv e o ZIP seguem PENDING. Isso não bloqueia a reprodução científica, e o hash bruto histórico não foi inventado.",
         ],
     }

@@ -13,7 +13,7 @@ Etapas, nesta ordem, para uma execução futura autorizada:
 
 Entrada: diretório externo com os sete CSV, nunca o checkout.
 Saída: diretório externo de agregados, nunca o checkout.
-R0 aceita apenas --plan e --preflight.
+R2 aceita --plan, --preflight e --synthetic-proof. --fit continua recusado.
 """
 
 from __future__ import annotations
@@ -25,7 +25,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from jla.g2c2 import bootstrap_catalog, indicator_catalog, model_specification, preflight_decision, refuse_fit  # noqa: E402
+from jla.g2c2 import bootstrap_catalog, contract_checklist, indicator_catalog, model_specification, preflight_decision, refuse_fit  # noqa: E402
+from jla.g2c2_metrics import synthetic_end_to_end  # noqa: E402
 
 
 def _outside(path: Path) -> bool:
@@ -37,6 +38,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="reprodução G2c.2; R0 não ajusta nem baixa")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--preflight", action="store_true")
+    parser.add_argument("--synthetic-proof", action="store_true")
     parser.add_argument("--fit", action="store_true")
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--output-dir", type=Path)
@@ -64,6 +66,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"indicadores {indicators['n']} unavailable {indicators['unavailable']} scheduled {indicators['scheduled']}")
         print(f"contrastes {contrasts['n']} draws {spec['bootstrap_draws']} seed {spec['bootstrap_seed']}")
         print("g2c2_numeric_pass NO-GO")
+        for item in contract_checklist():
+            print(f"{item['code']} {item['status']}")
+        return 0
+    if args.synthetic_proof:
+        proof = synthetic_end_to_end()
+        print(f"source {proof['source']} oulad_fit {proof['oulad_fit']} targets_used {proof['targets_used']}")
+        print(f"auc {proof['auc']:.6f} brier {proof['brier']:.6f} ece15 {proof['ece15']:.6f}")
+        print(f"landmark {proof['landmark_status']} bootstrap {proof['bootstrap_draws']} valid {proof['bootstrap_n_valid']}")
         return 0
     print("informe --plan ou --preflight", file=sys.stderr)
     return 1
