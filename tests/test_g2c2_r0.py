@@ -23,7 +23,8 @@ from jla.g2c2 import (  # noqa: E402
     preflight_decision,
     student_group_splits,
 )
-from jla.g2c2_metrics import landmark_gate, synthetic_end_to_end  # noqa: E402
+from jla.g2c2_gates import structural_report  # noqa: E402
+from jla.g2c2_metrics import fixed_hazard_contrasts, landmark_gate, synthetic_end_to_end  # noqa: E402
 from jla.science import FORBIDDEN  # noqa: E402
 
 
@@ -190,6 +191,33 @@ def test_catalogs_drop_numeric_targets_and_match_the_eight_gaps():
     assert [item["code"] for item in checklist] == [f"B{number:02d}" for number in range(1, 17)]
     assert {item["status"] for item in checklist} <= {"PASS", "LIMITAÇÃO", "STOP"}
     assert all(item["proof"] for item in checklist)
+
+
+def test_fixed_hazards_cover_twelve_contrasts_with_five_hundred_draws():
+    rows = fixed_hazard_contrasts()
+    assert len(rows) == 12
+    assert {(row["arm"], row["estimand"]) for row in rows} == {
+        (arm, estimand)
+        for arm in ("A", "B", "B-9")
+        for estimand in ("delta_s_shock", "delta_gap_shock", "delta_s_mechanism", "delta_gap_mechanism")
+    }
+    assert all(row["draws"] == 500 and row["seed"] == 42 and row["model"] == "fixed" and row["n_valid"] >= 50 for row in rows)
+    assert all(row["ci_lo"] <= row["ci_hi"] for row in rows)
+    assert all(row["source"] == "synthetic_fixed_hazard" for row in rows)
+
+
+def test_structural_gate_stops_when_a_count_differs():
+    observed = {key: value for key, value in structural_report({})["observed"].items()}
+    from jla.g2c2_gates import EXPECTED
+
+    matched = structural_report(dict(EXPECTED))
+    assert matched["status"] == "PASS" and matched["mismatches"] == []
+    broken = dict(EXPECTED)
+    broken["fail9"] = 8
+    stopped = structural_report(broken)
+    assert stopped["status"] == "STOP"
+    assert stopped["mismatches"][0]["gate"] == "fail9"
+    assert observed == {}
 
 
 def test_synthetic_metrics_do_not_fit_oulad_or_read_targets():

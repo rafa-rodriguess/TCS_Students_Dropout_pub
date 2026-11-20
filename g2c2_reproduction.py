@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from jla.g2c2 import bootstrap_catalog, contract_checklist, indicator_catalog, model_specification, preflight_decision, refuse_fit  # noqa: E402
+from jla.g2c2_execute import run_approved  # noqa: E402
+from jla.g2c2_gates import measure, structural_report  # noqa: E402
 from jla.g2c2_metrics import synthetic_end_to_end  # noqa: E402
 
 
@@ -39,6 +41,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--synthetic-proof", action="store_true")
+    parser.add_argument("--structural-gates", action="store_true")
+    parser.add_argument("--run-approved", action="store_true")
+    parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--fit", action="store_true")
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--output-dir", type=Path)
@@ -49,6 +54,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.fit or args.allow_download:
         refuse_fit()
+    if args.data_dir is not None and not _outside(args.data_dir):
+        print("dados dentro do checkout", file=sys.stderr)
+        return 2
     if args.output_dir is not None and not _outside(args.output_dir):
         print("saída dentro do checkout", file=sys.stderr)
         return 2
@@ -74,6 +82,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"source {proof['source']} oulad_fit {proof['oulad_fit']} targets_used {proof['targets_used']}")
         print(f"auc {proof['auc']:.6f} brier {proof['brier']:.6f} ece15 {proof['ece15']:.6f}")
         print(f"landmark {proof['landmark_status']} bootstrap {proof['bootstrap_draws']} valid {proof['bootstrap_n_valid']}")
+        return 0
+    if args.structural_gates:
+        if args.data_dir is None:
+            print("gates exigem --data-dir externo", file=sys.stderr)
+            return 2
+        report = structural_report(measure(args.data_dir))
+        print(f"structural {report['status']} mismatches {len(report['mismatches'])}")
+        for row in report["mismatches"]:
+            print(f"{row['gate']} expected {row['expected']} observed {row['observed']}")
+        return 0 if report["status"] == "PASS" else 1
+    if args.run_approved:
+        if args.data_dir is None or args.output_dir is None:
+            print("execução exige --data-dir e --output-dir externos", file=sys.stderr)
+            return 2
+        report = structural_report(measure(args.data_dir))
+        if report["status"] != "PASS":
+            print(f"structural STOP mismatches {len(report['mismatches'])}")
+            return 1
+        run_approved(args.data_dir, args.output_dir)
+        print("run-approved finished")
         return 0
     print("informe --plan ou --preflight", file=sys.stderr)
     return 1

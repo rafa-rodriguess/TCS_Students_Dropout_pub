@@ -95,6 +95,64 @@ def _survival_frame() -> tuple[pd.DataFrame, np.ndarray]:
     return frame, hazard
 
 
+def fixed_hazard_contrasts() -> list[dict]:
+    """Doze contrastes com hazards fixos. Não ajusta modelo e não lê alvos."""
+    from .science import BOOTSTRAP_DRAWS, BOOTSTRAP_SEED, bootstrap, gap
+
+    rows = []
+    for arm, level in (("A", 0.02), ("B", 0.03), ("B-9", 0.025)):
+        people = []
+        for student in range(6):
+            people.append(
+                {
+                    "id_student": student,
+                    "code_module": "AAA",
+                    "code_presentation": "2014J",
+                    "gender": "F" if student % 2 == 0 else "M",
+                    "S_base": (1.0 - level) ** 19,
+                    "S_shock": (1.0 - level * 0.92) ** 19,
+                    "S_mech": (1.0 - level * 0.85) ** 19,
+                    "female": student % 2 == 0,
+                }
+            )
+        both = pd.DataFrame(people)
+        both["dS_shock"] = both["S_shock"] - both["S_base"]
+        both["dS_mech"] = both["S_mech"] - both["S_base"]
+        for estimand, column, scenario in (
+            ("delta_s_shock", "dS_shock", "S_shock"),
+            ("delta_gap_shock", "dS_shock", "S_shock"),
+            ("delta_s_mechanism", "dS_mech", "S_mech"),
+            ("delta_gap_mechanism", "dS_mech", "S_mech"),
+        ):
+            work = both.copy()
+            work["dS"] = work[column]
+            work["S_scenario"] = work[scenario]
+            boot_s, boot_g = bootstrap(work, "dS")
+            point_s = float(work["dS"].mean())
+            point_g = gap(work[scenario].to_numpy(), work["female"].to_numpy()) - gap(work["S_base"].to_numpy(), work["female"].to_numpy())
+            point = point_s if estimand.startswith("delta_s") else point_g
+            draws = boot_s if estimand.startswith("delta_s") else boot_g
+            rows.append(
+                {
+                    "arm": arm,
+                    "estimand": estimand,
+                    "population_n": int(len(both)),
+                    "point": point,
+                    "bootstrap_mean": float(np.mean(draws)),
+                    "bias_abs": float(np.mean(draws) - point),
+                    "ci_lo": float(np.quantile(draws, 0.025)),
+                    "ci_hi": float(np.quantile(draws, 0.975)),
+                    "n_valid": int(len(draws)),
+                    "draws": BOOTSTRAP_DRAWS,
+                    "seed": BOOTSTRAP_SEED,
+                    "unit": "id_student",
+                    "model": "fixed",
+                    "source": "synthetic_fixed_hazard",
+                }
+            )
+    return rows
+
+
 def synthetic_end_to_end() -> dict:
     train = _feature_rows(range(10), {0, 2, 4, 6, 8})
     test = _feature_rows(range(10, 15), {10, 12})
