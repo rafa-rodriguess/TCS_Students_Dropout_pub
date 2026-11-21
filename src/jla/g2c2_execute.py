@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -132,10 +134,58 @@ def _bootstrap_rows(both: pd.DataFrame, arm: str) -> list[dict]:
     return rows
 
 
-def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm: str, output: Path) -> dict:
+def _atomic_joblib(model, path: Path) -> tuple[str, int]:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".partial")
+    joblib.dump(model, temporary)
+    temporary.replace(path)
+    payload = path.read_bytes()
+    return hashlib.sha256(payload).hexdigest(), len(payload)
+
+
+def _proba_gap(left, right, features: pd.DataFrame) -> float:
+    if features.empty:
+        return 0.0
+    gap = 0.0
+    for start in range(0, len(features), 20000):
+        part = features.iloc[start : start + 20000]
+        difference = np.abs(left.predict_proba(part)[:, 1] - right.predict_proba(part)[:, 1])
+        gap = max(gap, float(difference.max()))
+    return gap
+
+
+class _ReloadedModel:
+    """Repassa a inferência e conta as chamadas, sem alterar o estimador."""
+
+    def __init__(self, model) -> None:
+        self.model = model
+        self.calls = 0
+
+    def predict_proba(self, features):
+        self.calls += 1
+        return self.model.predict_proba(features)
+
+
+def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm: str, output: Path, *, persist: bool = False) -> dict:
     train = frame.loc[frame["split"] == "train"].copy()
     test = frame.loc[frame["split"] == "test"].copy()
-    model = fit_one(train)
+    memory = fit_one(train)
+    private = output / "private" / arm
+    private.mkdir(parents=True, exist_ok=True)
+    persistence = None
+    model = memory
+    if persist:
+        path = private / "model.joblib"
+        digest, nbytes = _atomic_joblib(memory, path)
+        loaded = joblib.load(path)
+        gap = _proba_gap(memory, loaded, test[FEATURES])
+        if gap > 1e-9:
+            raise RuntimeError(f"modelo recarregado de {arm} difere da memória: {gap}")
+        again = hashlib.sha256(path.read_bytes()).hexdigest()
+        if again != digest:
+            raise RuntimeError(f"hash do modelo de {arm} mudou depois da gravação")
+        model = _ReloadedModel(loaded)
+        persistence = {"sha256": digest, "bytes": nbytes, "predict_max_abs": gap, "reloaded": True}
     test = test.reset_index(drop=True)
     test["hazard_hat"] = model.predict_proba(test[FEATURES])[:, 1]
     y = test["event"].to_numpy(dtype=int)
@@ -143,8 +193,6 @@ def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm
     weekly = clustered_auc(test)
     calibration = ece15(y, p)
     ece = float(calibration[-1]["ece"])
-    private = output / "private" / arm
-    private.mkdir(parents=True, exist_ok=True)
     test[KEYS + ["week", "event", "hazard_hat"]].to_csv(private / "test_scores.csv", index=False)
     train_ids = set(frame.loc[frame["split"] == "train", "id_student"])
     clock = clock_frame(enrollments, arm)
@@ -214,6 +262,17 @@ def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm
         cells.append(_cell("clique_zero", arm, int(((test["click_record"] == 1) & (test["total_clicks"] == 0)).sum()), "linha"))
     if (arm, "semana_nominal_parcial") not in UNAVAILABLE:
         cells.append(_cell("semana_nominal_parcial", arm, int((test["partial_nominal_week"] == 1).sum()), "linha"))
+    if persist:
+        reloaded_again = joblib.load(path)
+        week9 = test.loc[test["week"] == 9, FEATURES]
+        sample = week9.iloc[:1] if len(week9) else test.iloc[:1][FEATURES]
+        post_gap = max(_proba_gap(model.model, reloaded_again, test[FEATURES]), _proba_gap(model.model, reloaded_again, sample))
+        after = hashlib.sha256(path.read_bytes()).hexdigest()
+        if post_gap > 1e-9 or after != persistence["sha256"]:
+            raise RuntimeError(f"modelo de {arm} não permaneceu estável depois do marco: {post_gap}")
+        persistence["post_pipeline_max_abs"] = post_gap
+        persistence["sha256_after"] = after
+        persistence["predict_proba_calls"] = model.calls
     payload = {
         "arm": arm,
         "cells": cells,
@@ -222,20 +281,24 @@ def score_arm(frame: pd.DataFrame, enrollments: pd.DataFrame, test_ids: set, arm
         "landmark_status": landmark_status,
         "frozen_ok": bool(landmark["frozen_ok"]),
         "G18": g18,
+        "snapshot_gap": landmark["snapshot_gap"],
+        "n_without_week9": landmark["n_without_week9"],
+        "predict_proba_calls": None if not isinstance(model, _ReloadedModel) else model.calls,
+        "persistence": persistence,
     }
     (output / "results").mkdir(parents=True, exist_ok=True)
     (output / "results" / f"{arm}.json").write_text(json.dumps(payload), encoding="utf-8")
     return {"test_keys": test[KEYS + ["week", "event", "hazard_hat"]], "payload": payload}
 
 
-def run_approved(raw: Path, output: Path) -> dict:
+def run_approved(raw: Path, output: Path, *, persist: bool = False) -> dict:
     output.mkdir(parents=True, exist_ok=True)
     enrollments, test_ids, clicks, submitted = _prepare(raw)
     saved = {}
     for arm in ("A", "B", "B-9"):
         print(f"arm {arm} start", flush=True)
         frame = build_frame(enrollments, clicks, submitted, test_ids, arm)
-        saved[arm] = score_arm(frame, enrollments, test_ids, arm, output)
+        saved[arm] = score_arm(frame, enrollments, test_ids, arm, output, persist=persist)
         del frame
         print(f"arm {arm} done", flush=True)
     _common_support(saved["A"]["test_keys"], saved["B"]["test_keys"], output)
