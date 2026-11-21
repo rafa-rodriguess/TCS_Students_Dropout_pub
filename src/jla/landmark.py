@@ -68,6 +68,46 @@ def g_from_train_at_risk(enr: pd.DataFrame, train_ids: set) -> dict[int, float]:
     return censoring_g(at_risk)
 
 
+def sort_landmark_test(test: pd.DataFrame) -> pd.DataFrame:
+    """Ordem DEV: aluno, módulo e apresentação, antes de observed e do concat."""
+    return test.sort_values(KEYS, kind="mergesort").reset_index(drop=True)
+
+
+def score_ordered_landmark(test: pd.DataFrame, g: dict[int, float]) -> dict:
+    """Calcula os intervalos do marco depois da ordenação, sem reordenar o IPCW."""
+    ordered_test = sort_landmark_test(test)
+    if ordered_test.loc[ordered_test["y"] >= 0, "hazard_hat"].isna().any():
+        raise RuntimeError("há caso ou controle sem h(9)")
+    observed = ordered_test.loc[ordered_test["y"] >= 0, ["id_student", "hazard_hat", "y"]].rename(columns={"y": "event"})
+    case_rows = ordered_test.loc[ordered_test["y"] == 1, ["id_student", "hazard_hat", "t_event_week"]]
+    control_rows = ordered_test.loc[ordered_test["y"] == 0, ["id_student", "hazard_hat"]]
+    case_weeks = case_rows["t_event_week"].astype(int).to_numpy()
+    w_case, w_control = ipcw_weights(case_weeks, g, 18, int(len(control_rows)))
+    cases = case_rows[["id_student", "hazard_hat"]].assign(event=1, w=w_case)
+    controls = control_rows.assign(event=0, w=w_control)
+    ordered = pd.concat([cases, controls], ignore_index=True)
+    unweighted = clustered_auc(observed)
+    ipcw = clustered_auc(ordered, ordered["w"].to_numpy())
+    return {
+        "unweighted": unweighted,
+        "ipcw": ipcw,
+        "ess_cases": ess(w_case),
+        "ess_controls": ess(w_control),
+        "support": {"weight_case_max": float(w_case.max()), "weight_case_p50": float(np.median(w_case)), "weight_control": float(w_control[0])},
+        "landmark_fingerprint": _cluster_fingerprint(observed),
+        "ipcw_fingerprint": _cluster_fingerprint(ordered),
+        "n_clusters": int(observed.groupby("id_student", sort=False).ngroups),
+    }
+
+
+def _cluster_fingerprint(frame: pd.DataFrame) -> str:
+    import hashlib
+
+    positions = frame.reset_index(drop=True).groupby("id_student", sort=False).indices
+    encoded = np.asarray(list(positions), dtype=np.int64)
+    return hashlib.sha256(encoded.tobytes()).hexdigest()
+
+
 def evaluate_landmark(enr: pd.DataFrame, frame: pd.DataFrame, model, train_ids: set, *, require_frozen: bool) -> dict:
     snap, gap, n_without_week9 = snapshot_at_risk(frame, enr, model)
     roles = landmark_roles(enr)
@@ -83,19 +123,12 @@ def evaluate_landmark(enr: pd.DataFrame, frame: pd.DataFrame, model, train_ids: 
     ess_controls = None
     support = None
     if n_cases and n_controls:
-        if test.loc[test["y"] >= 0, "hazard_hat"].isna().any():
-            raise RuntimeError("há caso ou controle sem h(9)")
-        observed = test.loc[test["y"] >= 0, ["id_student", "hazard_hat", "y"]].rename(columns={"y": "event"})
-        unweighted = clustered_auc(observed)
-        case_weeks = test.loc[test["y"] == 1, "t_event_week"].astype(int).to_numpy()
-        w_case, w_control = ipcw_weights(case_weeks, g, 18, n_controls)
-        cases = test.loc[test["y"] == 1, ["id_student", "hazard_hat"]].assign(event=1, w=w_case)
-        controls = test.loc[test["y"] == 0, ["id_student", "hazard_hat"]].assign(event=0, w=w_control)
-        ordered = pd.concat([cases, controls], ignore_index=True)
-        ipcw = clustered_auc(ordered, ordered["w"].to_numpy())
-        ess_cases = ess(w_case)
-        ess_controls = ess(w_control)
-        support = {"weight_case_max": float(w_case.max()), "weight_case_p50": float(np.median(w_case)), "weight_control": float(w_control[0])}
+        scored = score_ordered_landmark(test, g)
+        unweighted = scored["unweighted"]
+        ipcw = scored["ipcw"]
+        ess_cases = scored["ess_cases"]
+        ess_controls = scored["ess_controls"]
+        support = scored["support"]
     if n_cases and n_controls and (ipcw is None or unweighted is None):
         raise RuntimeError("AUC ausente com casos e controles")
     counts = {"n_cases": n_cases, "n_controls": n_controls, "n_excluded": n_excluded}
@@ -112,6 +145,7 @@ def evaluate_landmark(enr: pd.DataFrame, frame: pd.DataFrame, model, train_ids: 
         "auc": None if ipcw is None else ipcw["auc"],
         "auc_ci": None if ipcw is None else [ipcw["ci_lo"], ipcw["ci_hi"]],
         "auc_unweighted": None if unweighted is None else unweighted["auc"],
+        "auc_unweighted_ci": None if unweighted is None else [unweighted["ci_lo"], unweighted["ci_hi"]],
         "ess_cases": ess_cases,
         "ess_controls": ess_controls,
         "support": support,
