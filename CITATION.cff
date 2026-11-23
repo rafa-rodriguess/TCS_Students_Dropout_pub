@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use the scientific code, please cite this repository and the associated manuscript when available."
+type: software
+title: "TCS Students Dropout: Reproduction Code for an Auditable Policy-Simulation Framework"
+authors:
+  - family-names: "da Silva"
+    given-names: "Rafael"
+  - family-names: "Eicher"
+    given-names: "Jeff"
+  - family-names: "Longo"
+    given-names: "Gregory"
+repository-code: "https://github.com/rafa-rodriguess/TCS_Students_Dropout_pub"
+license: "MIT"
+keywords:
+  - "learning analytics"
+  - "student withdrawal"
+  - "discrete-time hazard"
+  - "policy simulation"
+  - "OULAD"
+abstract: "Public scientific code and numerical reproduction package for an observational learning-analytics study of weekly withdrawal risk, hypothetical policy scenarios and descriptive subgroup diagnostics. It does not estimate causal intervention effects."
